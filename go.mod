@@ -1,4 +1,4 @@
-module github.com/darrida/gokp
+module github.com/darrida/gk
 
 go 1.23.5
 
