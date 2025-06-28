@@ -13,8 +13,21 @@ import (
 	"golang.org/x/term"
 )
 
+func init() {
+	rootCmd.AddCommand(setupCmd)
+	setupCmd.AddCommand(setupInitCmd)
+	setupCmd.AddCommand(setupAddCommand)
+	var TestMode bool
+	setupInitCmd.PersistentFlags().BoolVarP(&TestMode, "test", "t", false, "Run CLI command in test mode")
+}
+
 var setupCmd = &cobra.Command{
 	Use:   "setup",
+	Short: "Manage gokp db and KeyPass db entries",
+}
+
+var setupInitCmd = &cobra.Command{
+	Use:   "init",
 	Short: "Initial setup of gokp app database",
 	Run: func(cmd *cobra.Command, args []string) {
 		test, _ := cmd.Flags().GetBool("test")
@@ -25,7 +38,7 @@ var setupCmd = &cobra.Command{
 		// println(gokpKDBX)
 
 		if _, err := os.Stat(gokpFolder); os.IsNotExist(err) {
-			println("Creating .gokeepass folder in home directory")
+			println("Creating .gokp folder in home directory")
 			os.Mkdir(gokpFolder, os.ModePerm)
 		}
 
@@ -57,29 +70,30 @@ var setupCmd = &cobra.Command{
 		fmt.Println()
 		passwordStr := string(password)
 
-		println(passwordStr)
+		fmt.Print("\nWould you like to save this password to the local OS key store (yes/no)? ")
+		var confirmation string
+		fmt.Scanln(&confirmation)
+		if confirmation == "yes" {
+			save_password("gokp", "local", passwordStr)
+			println("Saved gokeepass password to keystore")
+		}
+
 		createDB(gokpKDBX, passwordStr)
 	},
-}
-
-func init() {
-	rootCmd.AddCommand(setupCmd)
-	var TestMode bool
-	setupCmd.PersistentFlags().BoolVarP(&TestMode, "test", "t", false, "Run CLI command in test mode")
 }
 
 func pathSelection(test bool) (string, string, string) {
 	homeDir, _ := os.UserHomeDir()
 
 	var gokpFolder string
-	if test == false {
-		gokpFolder = filepath.Join(homeDir, ".gokeepass")
+	if !test {
+		gokpFolder = filepath.Join(homeDir, ".gokp")
 	} else {
-		gokpFolder = filepath.Join(homeDir, "test", ".gokeepass")
+		gokpFolder = filepath.Join(homeDir, "test", ".gokp")
 	}
 
 	gokpExecutable := filepath.Join(gokpFolder, "keepass.exe")
-	gokpKDBX := filepath.Join(gokpFolder, "gokeepass.kdbx")
+	gokpKDBX := filepath.Join(gokpFolder, "gokp.kdbx")
 	return gokpFolder, gokpExecutable, gokpKDBX
 }
 
@@ -102,8 +116,14 @@ func createDB(dbPath string, password string) {
 	//
 	//
 	// create root group
-	rootGroup := gokeepasslib.NewGroup()
-	rootGroup.Name = "root group"
+	// rootGroup := gokeepasslib.NewGroup()
+	// rootGroup.Name = "root"
+
+	dbsGroup := gokeepasslib.NewGroup()
+	dbsGroup.Name = "databases"
+
+	favGroup := gokeepasslib.NewGroup()
+	favGroup.Name = "favorites"
 
 	// entry := gokeepasslib.NewEntry()
 	// entry.Values = append(entry.Values, mkValue("Title", "My GMail password"))
@@ -135,10 +155,16 @@ func createDB(dbPath string, password string) {
 		Content: &gokeepasslib.DBContent{
 			Meta: gokeepasslib.NewMetaData(),
 			Root: &gokeepasslib.RootData{
-				Groups: []gokeepasslib.Group{rootGroup},
+				Groups: []gokeepasslib.Group{dbsGroup, favGroup},
 			},
 		},
 	}
+
+	dbs := FindRootGroupByName(db.Content.Root.Groups, dbsGroup.Name)
+	fmt.Print(dbs.Name)
+	fav := FindRootGroupByName(db.Content.Root.Groups, favGroup.Name)
+	fmt.Print(fav.Name)
+
 	// db.LockProtectedEntries()
 	keepassEncoder := gokeepasslib.NewEncoder(file)
 	if err := keepassEncoder.Encode(db); err != nil {
@@ -156,4 +182,35 @@ func createDB(dbPath string, password string) {
 	// entry := db.Content.Root.Groups[0].Groups[0].Entries[0]
 	// fmt.Println(entry.GetTitle())
 	// fmt.Println(entry.GetPassword())
+}
+
+var setupAddCommand = &cobra.Command{
+	Use:   "add",
+	Short: "Add Keypass db entry",
+	Run: func(cmd *cobra.Command, args []string) {
+		entry := gokeepasslib.NewEntry()
+		entry.Values = append(entry.Values, mkValue("Title", "My GMail password"))
+		entry.Values = append(entry.Values, mkValue("UserName", "example@gmail.com"))
+		entry.Values = append(entry.Values, mkProtectedValue("Password", "hunter2"))
+
+		// rootGroup.Entries = append(rootGroup.Entries, entry)
+	},
+}
+
+func FindRootGroupByName(groups []gokeepasslib.Group, name string) *gokeepasslib.Group {
+	for _, group := range groups {
+		if group.Name == name {
+			return &group
+		}
+	}
+	return nil
+}
+
+func FindRootGroupIndexByName(groups []gokeepasslib.Group, name string) *int {
+	for index, group := range groups {
+		if group.Name == name {
+			return &index
+		}
+	}
+	return nil
 }

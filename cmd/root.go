@@ -10,9 +10,9 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "root-help",
 	Short: "Manage multiple keepasses used on a daily basis",
-	Run: func(cmd *cobra.Command, args []string) {
-		println("To get started, use the help command")
-	},
+	// Run: func(cmd *cobra.Command, args []string) {
+	// 	println("To get started, use the help command")
+	// },
 }
 
 func Execute() {
