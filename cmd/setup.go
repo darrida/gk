@@ -16,7 +16,6 @@ import (
 func init() {
 	rootCmd.AddCommand(setupCmd)
 	setupCmd.AddCommand(setupInitCmd)
-	setupCmd.AddCommand(setupAddCommand)
 	var TestMode bool
 	setupInitCmd.PersistentFlags().BoolVarP(&TestMode, "test", "t", false, "Run CLI command in test mode")
 }
@@ -182,19 +181,6 @@ func createDB(dbPath string, password string) {
 	// entry := db.Content.Root.Groups[0].Groups[0].Entries[0]
 	// fmt.Println(entry.GetTitle())
 	// fmt.Println(entry.GetPassword())
-}
-
-var setupAddCommand = &cobra.Command{
-	Use:   "add",
-	Short: "Add Keypass db entry",
-	Run: func(cmd *cobra.Command, args []string) {
-		entry := gokeepasslib.NewEntry()
-		entry.Values = append(entry.Values, mkValue("Title", "My GMail password"))
-		entry.Values = append(entry.Values, mkValue("UserName", "example@gmail.com"))
-		entry.Values = append(entry.Values, mkProtectedValue("Password", "hunter2"))
-
-		// rootGroup.Entries = append(rootGroup.Entries, entry)
-	},
 }
 
 func FindRootGroupByName(groups []gokeepasslib.Group, name string) *gokeepasslib.Group {
