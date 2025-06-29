@@ -184,3 +184,69 @@ func fuzzyStringMatch(text, pattern string) bool {
 	// If we matched all pattern characters, it's a fuzzy match
 	return patternIdx == len(pattern)
 }
+
+func printSearchResult(count string, entry gokeepasslib.Entry, databaseName string) {
+	title := entry.GetTitle()
+	username := getEntryValue(entry, "UserName")
+	url := getEntryValue(entry, "URL")
+	notes := getEntryValue(entry, "Notes")
+	uuid := entry.UUID
+
+	fmt.Printf("\n--------------------\n")
+	if count != "" {
+		fmt.Printf("Selection: %s\n", count)
+		fmt.Printf("--------------------\n")
+	}
+	fmt.Printf("Title:     %s\n", title)
+	fmt.Printf("Database:  %s\n", databaseName)
+	if username != "" {
+		fmt.Printf("Username:  %s\n", username)
+	}
+	if url != "" {
+		fmt.Printf("URL:       %s\n", url)
+	}
+	if notes != "" && len(notes) > 0 {
+		if len(notes) > 100 {
+			fmt.Printf("Notes:     %s...\n", notes[:100])
+		} else {
+			fmt.Printf("Notes:     %s\n", notes)
+		}
+	}
+	fmt.Printf(("UUID:      %x\n"), uuid)
+
+	var firstPass bool = true
+	for _, value := range entry.Values {
+		if value.Key != "Password" && value.Key != "UserName" && value.Key != "URL" && value.Key != "Notes" && value.Key != "Title" {
+			if firstPass {
+				fmt.Println("Custom Attributes:")
+				firstPass = false
+			}
+			fmt.Printf("- %s: %s\n", value.Key, value.Value.Content)
+		}
+	}
+}
+
+func selectFavoriteEntry(selections map[string]SearchResult) (SearchResult, error) {
+	fmt.Printf("\n--------------------\n")
+	fmt.Printf("SUMMARY SELECTION LIST:")
+	for selector, result := range selections {
+		fmt.Printf("\n%s: %s (UUID: %x, DB: %s)", selector, result.Entry.GetTitle(), result.Entry.UUID, result.DatabaseName)
+	}
+
+	fmt.Print("\n\nEntry number for entry to save:\n> ")
+	var selected string
+	fmt.Scanln(&selected)
+
+	if selected == "" {
+		// fmt.Println("\nNo input provided, exiting.")
+		return SearchResult{}, fmt.Errorf("no input provided")
+	}
+
+	result := selections[selected]
+	if result.Entry.GetTitle() == "" {
+		// fmt.Printf("\nNo entry found for selection '%s'. Please try again.\n", selected)
+		return SearchResult{}, fmt.Errorf("no entry found for selection '%s'", selected)
+	}
+
+	return result, nil
+}

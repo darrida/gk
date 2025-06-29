@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/tobischo/gokeepasslib/v3"
@@ -17,6 +18,7 @@ func init() {
 	searchCmd.Flags().BoolP("exact", "e", false, "Exact match only (no fuzzy search)")
 	searchCmd.Flags().StringP("group", "g", "", "Search only in specific group")
 	searchCmd.Flags().StringP("database", "d", "", "Search only in specific external database")
+	searchCmd.Flags().BoolP("favorites", "f", false, "Select entries for favorites")
 }
 
 var searchCmd = &cobra.Command{
@@ -42,6 +44,7 @@ Examples:
 		exactMatch, _ := cmd.Flags().GetBool("exact")
 		targetGroup, _ := cmd.Flags().GetString("group")
 		targetDatabase, _ := cmd.Flags().GetString("database")
+		setFavorites, _ := cmd.Flags().GetBool("favorites")
 
 		_, _, gokpKDBX := pathSelection(false)
 
@@ -67,13 +70,13 @@ Examples:
 			return
 		}
 
-		// Search across all external databases
 		var allResults []SearchResult
 		totalDBsSearched := 0
 
 		for _, dbEntry := range databasesGroup.Entries {
 			dbName := dbEntry.GetTitle()
 
+			// If filter for specific database is set, skip all that don't match
 			if targetDatabase != "" && dbName != targetDatabase {
 				continue
 			}
@@ -87,13 +90,11 @@ Examples:
 				continue
 			}
 
-			// Check if database file exists
 			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 				fmt.Printf("Warning: Database file '%s' not found for database '%s', skipping.\n", dbPath, dbName)
 				continue
 			}
 
-			// Open external database
 			externalDB, err := openExternalKeepassDB(dbPath, dbPassword, keyFilePath)
 			if err != nil {
 				fmt.Printf("Warning: Failed to open database '%s': %v, skipping.\n", dbName, err)
@@ -102,16 +103,13 @@ Examples:
 
 			totalDBsSearched++
 
-			// Search in this external database
 			var results []gokeepasslib.Entry
 			if targetGroup != "" {
-				// Search in specific group
 				group := FindRootGroupByName(externalDB.Content.Root.Groups, targetGroup)
 				if group != nil {
 					results = searchEntriesInGroup(group, query, caseSensitive, exactMatch)
 				}
 			} else {
-				// Search in all groups
 				results = fuzzySearchEntries(externalDB, query, caseSensitive, exactMatch)
 			}
 
@@ -124,7 +122,6 @@ Examples:
 				})
 			}
 
-			// Close the external database
 			closeKeepassDB(externalDB)
 		}
 
@@ -138,32 +135,33 @@ Examples:
 			return
 		}
 
+		selections := map[string]SearchResult{}
 		fmt.Printf("Found %d entries matching '%s' across %d database(s):\n", len(allResults), query, totalDBsSearched)
-		for _, result := range allResults {
+		for count, result := range allResults {
+			count++
+			countStr := strconv.Itoa(count)
+			if err != nil {
+				fmt.Printf("Error converting string to int: %v\n", err)
+				return
+			}
 			entry := result.Entry
-			title := entry.GetTitle()
-			username := getEntryValue(entry, "UserName")
-			url := getEntryValue(entry, "URL")
-			notes := getEntryValue(entry, "Notes")
-			uuid := entry.UUID
-
-			fmt.Printf("\n--- %s ---\n", title)
-			fmt.Printf("Database: %s\n", result.DatabaseName)
-			if username != "" {
-				fmt.Printf("Username: %s\n", username)
+			selections[countStr] = result
+			printSearchResult(countStr, entry, result.DatabaseName)
+		}
+		if setFavorites {
+			result, err := selectFavoriteEntry(selections)
+			if err != nil {
+				fmt.Printf("\nError: %v. Please try again.\n", err)
+				return
 			}
-			if url != "" {
-				fmt.Printf("URL: %s\n", url)
+			fmt.Printf("\nSelected entry: %s (UUID: %x, DB: %s)\n", result.Entry.GetTitle(), result.Entry.UUID, result.DatabaseName)
+			err = addFavoriteEntryToGoKP(gokpDB, result)
+			if err != nil {
+				fmt.Printf("\nError adding entry to favorites: %v\n", err)
+				return
 			}
-			if notes != "" && len(notes) > 0 {
-				// Truncate long notes for display
-				if len(notes) > 100 {
-					fmt.Printf("Notes: %s...\n", notes[:100])
-				} else {
-					fmt.Printf("Notes: %s\n", notes)
-				}
-			}
-			fmt.Printf(("UUID: %x\n"), uuid)
+			fmt.Println("Entry added to favorites successfully.")
+			saveKeepassDB(gokpDB, gokpKDBX)
 		}
 	},
 }

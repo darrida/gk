@@ -114,7 +114,6 @@ var listDbsCmd = &cobra.Command{
 		}
 
 		databases := FindRootGroupByName(db.Content.Root.Groups, "databases")
-		fmt.Printf("\nFound group: %s\n", databases.Name)
 		fmt.Println("Databases:")
 		for _, entry := range databases.Entries {
 			fmt.Printf("- %s\n    Path: %s\n", entry.GetTitle(), entry.GetContent("Database Path"))
@@ -210,6 +209,10 @@ var openCmd = &cobra.Command{
 	},
 }
 
-func setupEntry(name string) {
-
-}
+// var cacheExternalDBs = &cobra.Command{
+// 	Use:   "update",
+// 	Short: "'Cache' or update cache of external databases",
+// 	Args:  cobra.MinimumNArgs(1),
+// 	Run: func(cmd *cobra.Command, args []string) {
+// 	},
+// }
