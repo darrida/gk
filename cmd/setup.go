@@ -16,8 +16,11 @@ import (
 func init() {
 	rootCmd.AddCommand(setupCmd)
 	setupCmd.AddCommand(setupInitCmd)
+	setupCmd.AddCommand(setupDeleteCmd)
 	var TestMode bool
 	setupInitCmd.PersistentFlags().BoolVarP(&TestMode, "test", "t", false, "Run CLI command in test mode")
+	setupDeleteCmd.PersistentFlags().BoolVarP(&TestMode, "test", "t", false, "Run CLI command in test mode")
+	setupDeleteCmd.Flags().BoolP("force", "f", false, "Force deletion without confirmation prompts")
 }
 
 var setupCmd = &cobra.Command{
@@ -81,6 +84,85 @@ var setupInitCmd = &cobra.Command{
 	},
 }
 
+var setupDeleteCmd = &cobra.Command{
+	Use:   "delete",
+	Short: "Delete the gokp app database",
+	Long: `Delete the gokp app database file and optionally remove the password from keystore.
+
+WARNING: This will permanently delete your gokp database and all stored database entries.
+Make sure to backup any important data before proceeding.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		test, _ := cmd.Flags().GetBool("test")
+		force, _ := cmd.Flags().GetBool("force")
+
+		gokpFolder, _, gokpKDBX := pathSelection(test)
+
+		// Check if database exists
+		if _, err := os.Stat(gokpKDBX); os.IsNotExist(err) {
+			fmt.Println("No gokp database found to delete.")
+			return
+		}
+
+		if !force {
+			fmt.Printf("WARNING: This will permanently delete your gokp database at:\n%s\n", gokpKDBX)
+			fmt.Print("\nAre you sure you want to proceed? (yes/no): ")
+
+			var confirmation string
+			fmt.Scanln(&confirmation)
+
+			if confirmation != "yes" {
+				fmt.Println("Deletion cancelled.")
+				return
+			}
+		}
+
+		// Delete the database file
+		err := os.Remove(gokpKDBX)
+		if err != nil {
+			log.Fatalf("Failed to delete database file: %v", err)
+		}
+
+		fmt.Printf("Successfully deleted gokp database: %s\n", gokpKDBX)
+
+		// Handle keystore password removal
+		removePassword := force
+		if !force {
+			fmt.Print("\nWould you like to remove the stored password from keystore as well? (yes/no): ")
+			var response string
+			fmt.Scanln(&response)
+			removePassword = (response == "yes")
+		}
+
+		if removePassword {
+			delete_password("gokp", "local")
+			fmt.Println("Password removed from keystore.")
+		}
+
+		// Handle folder removal
+		entries, err := os.ReadDir(gokpFolder)
+		if err == nil && len(entries) == 0 {
+			removeFolder := force
+			if !force {
+				fmt.Print("\nThe .gokp folder is now empty. Remove it as well? (yes/no): ")
+				var response string
+				fmt.Scanln(&response)
+				removeFolder = (response == "yes")
+			}
+
+			if removeFolder {
+				err := os.Remove(gokpFolder)
+				if err != nil {
+					fmt.Printf("Warning: Failed to remove folder %s: %v\n", gokpFolder, err)
+				} else {
+					fmt.Printf("Removed folder: %s\n", gokpFolder)
+				}
+			}
+		}
+
+		fmt.Println("\nGokp database deletion completed.")
+	},
+}
+
 func pathSelection(test bool) (string, string, string) {
 	homeDir, _ := os.UserHomeDir()
 
@@ -111,42 +193,11 @@ func createDB(dbPath string, password string) {
 	file, _ := os.Create(dbPath)
 	defer file.Close()
 
-	//
-	//
-	//
-	// create root group
-	// rootGroup := gokeepasslib.NewGroup()
-	// rootGroup.Name = "root"
-
 	dbsGroup := gokeepasslib.NewGroup()
 	dbsGroup.Name = "databases"
 
 	favGroup := gokeepasslib.NewGroup()
 	favGroup.Name = "favorites"
-
-	// entry := gokeepasslib.NewEntry()
-	// entry.Values = append(entry.Values, mkValue("Title", "My GMail password"))
-	// entry.Values = append(entry.Values, mkValue("UserName", "example@gmail.com"))
-	// entry.Values = append(entry.Values, mkProtectedValue("Password", "hunter2"))
-
-	// rootGroup.Entries = append(rootGroup.Entries, entry)
-
-	// // demonstrate creating sub group (we'll leave it empty because we're lazy)
-	// subGroup := gokeepasslib.NewGroup()
-	// subGroup.Name = "sub group"
-
-	// subEntry := gokeepasslib.NewEntry()
-	// subEntry.Values = append(subEntry.Values, mkValue("Title", "Another password"))
-	// subEntry.Values = append(subEntry.Values, mkValue("UserName", "johndough"))
-	// subEntry.Values = append(subEntry.Values, mkProtectedValue("Password", "123456"))
-
-	// subGroup.Entries = append(subGroup.Entries, subEntry)
-
-	// rootGroup.Groups = append(rootGroup.Groups, subGroup)
-	//
-	//
-	//
-	//
 
 	db := &gokeepasslib.Database{
 		Header:      gokeepasslib.NewHeader(),
@@ -164,23 +215,11 @@ func createDB(dbPath string, password string) {
 	fav := FindRootGroupByName(db.Content.Root.Groups, favGroup.Name)
 	fmt.Print(fav.Name)
 
-	// db.LockProtectedEntries()
 	keepassEncoder := gokeepasslib.NewEncoder(file)
 	if err := keepassEncoder.Encode(db); err != nil {
 		panic(err)
 	}
-	// db := gokeepasslib.NewDatabase()
-	// db.Credentials = gokeepasslib.NewPasswordCredentials(password)
-	// _ = gokeepasslib.NewDecoder(file).Decode(db)
 	println("\nDONE: gokp app database created.\nSetup keepass databases by using:\n- 'gokp open <NEW_NAME> -s'")
-
-	// db.UnlockProtectedEntries()
-
-	// // Note: This is a simplified example and the groups and entries will depend on the specific file.
-	// // bound checking for the slices is recommended to avoid panics.
-	// entry := db.Content.Root.Groups[0].Groups[0].Entries[0]
-	// fmt.Println(entry.GetTitle())
-	// fmt.Println(entry.GetPassword())
 }
 
 func FindRootGroupByName(groups []gokeepasslib.Group, name string) *gokeepasslib.Group {

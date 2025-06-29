@@ -16,10 +16,17 @@ func init() {
 	rootCmd.AddCommand(manageDbsCmd)
 	manageDbsCmd.AddCommand(openCmd)
 	manageDbsCmd.AddCommand(addDbCmd)
+	manageDbsCmd.AddCommand(listDbsCmd)
 	var TestMode bool
 	var SetupEntry bool
 	openCmd.PersistentFlags().BoolVarP(&TestMode, "test", "t", false, "Run CLI command in test mode")
 	openCmd.PersistentFlags().BoolVarP(&SetupEntry, "setup", "s", false, "Setup a new keepass database entry")
+
+	// Add flags for addDbCmd
+	addDbCmd.Flags().StringP("path", "p", "", "Path to the KeePass database file (required)")
+	addDbCmd.Flags().StringP("password", "w", "", "Password for the database (required)")
+	addDbCmd.Flags().StringP("key", "k", "", "Path to the key file (optional)")
+	addDbCmd.MarkFlagRequired("path")
 }
 
 var manageDbsCmd = &cobra.Command{
@@ -28,85 +35,92 @@ var manageDbsCmd = &cobra.Command{
 }
 
 var addDbCmd = &cobra.Command{
-	Use:   "add [NAME]",
+	Use:   "add [NAME] --path PATH --password PASSWORD [--key KEYFILE]",
 	Short: "Add new Keepass Database",
-	Args:  cobra.ExactArgs(1),
+	Long: `Add a new KeePass database entry to the GoKP database.
+
+Examples:
+  gokp manage add mydb --path /path/to/database.kdbx
+  gokp manage add mydb --path /path/to/database.kdbx --key /path/to/keyfile.key`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		entry_name := args[0]
-		kdbx_path := "test.kdbx"
-		kdbx_key := "" //"test.key"
+
+		// Get path and key from command-line flags
+		kdbx_path, _ := cmd.Flags().GetString("path")
+		kdbx_key, _ := cmd.Flags().GetString("key")
+		kdbx_password, _ := cmd.Flags().GetString("password")
+
+		// Validate that the database file exists
+		if _, err := os.Stat(kdbx_path); os.IsNotExist(err) {
+			log.Fatalf("Database file does not exist: %s", kdbx_path)
+		}
+
+		// Validate key file if provided
+		if kdbx_key != "" {
+			if _, err := os.Stat(kdbx_key); os.IsNotExist(err) {
+				log.Fatalf("Key file does not exist: %s", kdbx_key)
+			}
+		}
 
 		_, _, gokpKDBX := pathSelection(false)
 
-		secret, err := get_password("gokp", "local")
+		secret, err := getGoKPPassword()
 		if err != nil {
-			fmt.Print("Enter admin password: ")
-			password, _ := term.ReadPassword(int(syscall.Stdin))
-			if string(password) == "" {
-				fmt.Println("\nPassword is required")
-				os.Exit(1)
-			}
-			fmt.Println()
-			secret = string(password)
+			log.Fatalf("Failed to get GoKP password: %v", err)
 		}
 
-		file, err := os.Open(gokpKDBX)
+		db, err := openKeepassDB(gokpKDBX, secret)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("Failed to open Keepass database: %v", err)
 		}
 
-		db := gokeepasslib.NewDatabase()
-		db.Credentials = gokeepasslib.NewPasswordCredentials(secret)
-		err = gokeepasslib.NewDecoder(file).Decode(db)
+		existingEntry := readEntryFromGroup(db, "databases", entry_name)
+		if existingEntry != nil {
+			fmt.Printf("\nERROR: Database entry by the name '%s' already exists.\n", entry_name)
+			os.Exit(0)
+		}
+
+		addGoKPEntryToGroup(db, "databases", entry_name, kdbx_password, kdbx_path, kdbx_key)
+
+		err = saveKeepassDB(db, gokpKDBX)
 		if err != nil {
-			println("\nWARNING: Unable to open gokeepass db. The password is likely incorrect.")
-			os.Exit(1)
-		}
-		file.Close()
-
-		db.UnlockProtectedEntries()
-
-		index := FindRootGroupIndexByName(db.Content.Root.Groups, "databases")
-		if index == nil || len(db.Content.Root.Groups) < *index {
-			fmt.Println("ERROR: `databases` group not found in gokp.kdbx. Try running `gokp setup init`")
-			os.Exit(1)
-		}
-		groupIndex := *index
-		databasesGroup := db.Content.Root.Groups[groupIndex]
-
-		fmt.Println(databasesGroup.Name)
-		for _, entry := range databasesGroup.Entries {
-			if entry_name == entry.GetTitle() {
-				fmt.Println("\nERROR: Database entry by that name already exists.")
-				os.Exit(0)
+			log.Fatalf("Failed to save Keepass database: %v", err)
+		} else {
+			fmt.Printf("\nSuccessfully added new database entry '%s' to the GoKP database.\n", entry_name)
+			fmt.Printf("Database path: %s\n", kdbx_path)
+			if kdbx_key != "" {
+				fmt.Printf("Key file: %s\n", kdbx_key)
 			}
 		}
+	},
+}
 
-		newEntry := gokeepasslib.NewEntry()
-		newEntry.Values = append(newEntry.Values, mkValue("Title", entry_name))
-		newEntry.Values = append(newEntry.Values, mkValue("UserName", kdbx_path))
-		newEntry.Values = append(newEntry.Values, mkProtectedValue("Password", "123456"))
-		newEntry.Values = append(newEntry.Values, mkValue("URL", kdbx_key))
-		fmt.Println(newEntry.GetTitle())
+var listDbsCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all databases in the GoKP database",
+	Run: func(cmd *cobra.Command, args []string) {
+		test, _ := cmd.Flags().GetBool("test")
+		_, _, gokpKDBX := pathSelection(test)
 
-		// Add the new entry to the target group
-		databasesGroup.Entries = append(databasesGroup.Entries, newEntry)
-		fmt.Printf("Entry added to group '%s'\n", databasesGroup.Name)
-
-		db.Content.Root.Groups[groupIndex] = databasesGroup
-
-		db.LockProtectedEntries()
-
-		// SAVE CHANGES
-		writeFile, err := os.Create(gokpKDBX)
+		secret, err := getGoKPPassword()
 		if err != nil {
-			panic(err)
+			log.Fatalf("Failed to get GoKP password: %v", err)
 		}
-		defer writeFile.Close()
 
-		keepassEncoder := gokeepasslib.NewEncoder(writeFile)
-		if err := keepassEncoder.Encode(db); err != nil {
-			panic(err)
+		db, err := openKeepassDB(gokpKDBX, secret)
+		if err != nil {
+			log.Fatalf("Failed to open Keepass database: %v", err)
+		}
+
+		databases := FindRootGroupByName(db.Content.Root.Groups, "databases")
+		fmt.Printf("\nFound group: %s\n", databases.Name)
+		fmt.Println("Databases:")
+		for _, entry := range databases.Entries {
+			fmt.Printf("- %s\n    Path: %s\n", entry.GetTitle(), entry.GetContent("Database Path"))
+			if entry.GetContent("Key File Path") != "" {
+				fmt.Printf("    Key:  %s\n", entry.GetContent("Key File Path"))
+			}
 		}
 	},
 }
@@ -114,11 +128,10 @@ var addDbCmd = &cobra.Command{
 var openCmd = &cobra.Command{
 	Use:   "open [NAME]",
 	Short: "Open existing database",
-	// Long:  "Open existing database",
-	Args: cobra.MinimumNArgs(1),
+	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) > 1 {
-			fmt.Errorf("Too many arguments passed. Cancelled.")
+			log.Fatal("Too many arguments passed. Cancelled.")
 		}
 		name := strings.Join(args, "")
 		println(name)
@@ -169,9 +182,20 @@ var openCmd = &cobra.Command{
 		// 	},
 		// }
 		databases := FindRootGroupByName(db.Content.Root.Groups, "databases")
-		fmt.Println(databases.Name)
+		fmt.Printf("\nFound group: %s\n", databases.Name)
+		fmt.Println("Databases:")
 		for _, entry := range databases.Entries {
-			fmt.Print(entry.GetTitle())
+			fmt.Printf("\n--- %s ---\n", entry.GetTitle())
+
+			// Display all attributes
+			for _, value := range entry.Values {
+				isProtected := value.Value.Protected.Bool
+				if value.Key == "Password" || isProtected {
+					fmt.Printf("%s: [PROTECTED]\n", value.Key)
+				} else {
+					fmt.Printf("%s: %s\n", value.Key, value.Value.Content)
+				}
+			}
 		}
 
 		// entry := db.Content.Root.Groups[0].Groups[0].Entries[0]
