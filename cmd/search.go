@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tobischo/gokeepasslib/v3"
@@ -17,6 +16,7 @@ func init() {
 	searchCmd.Flags().BoolP("case-sensitive", "c", false, "Perform case-sensitive search")
 	searchCmd.Flags().BoolP("exact", "e", false, "Exact match only (no fuzzy search)")
 	searchCmd.Flags().StringP("group", "g", "", "Search only in specific group")
+	searchCmd.Flags().StringP("database", "d", "", "Search only in specific external database")
 }
 
 var searchCmd = &cobra.Command{
@@ -41,6 +41,7 @@ Examples:
 		caseSensitive, _ := cmd.Flags().GetBool("case-sensitive")
 		exactMatch, _ := cmd.Flags().GetBool("exact")
 		targetGroup, _ := cmd.Flags().GetString("group")
+		targetDatabase, _ := cmd.Flags().GetString("database")
 
 		_, _, gokpKDBX := pathSelection(false)
 
@@ -72,6 +73,11 @@ Examples:
 
 		for _, dbEntry := range databasesGroup.Entries {
 			dbName := dbEntry.GetTitle()
+
+			if targetDatabase != "" && dbName != targetDatabase {
+				continue
+			}
+
 			dbPath := getEntryAttribute(&dbEntry, "Database Path")
 			dbPassword := dbEntry.GetPassword()
 			keyFilePath := getEntryAttribute(&dbEntry, "Key File Path")
@@ -160,135 +166,4 @@ Examples:
 			fmt.Printf(("UUID: %x\n"), uuid)
 		}
 	},
-}
-
-// fuzzySearchEntries performs fuzzy search across all groups and entries
-func fuzzySearchEntries(db *gokeepasslib.Database, query string, caseSensitive bool, exactMatch bool) []gokeepasslib.Entry {
-	var results []gokeepasslib.Entry
-	if !caseSensitive {
-		query = strings.ToLower(query)
-	}
-
-	// Search through all groups recursively
-	for _, group := range db.Content.Root.Groups {
-		results = append(results, searchEntriesInGroup(&group, query, caseSensitive, exactMatch)...)
-	}
-
-	return results
-}
-
-// searchEntriesInGroup searches entries within a specific group and its subgroups
-func searchEntriesInGroup(group *gokeepasslib.Group, query string, caseSensitive bool, exactMatch bool) []gokeepasslib.Entry {
-	var results []gokeepasslib.Entry
-
-	// Search entries in current group
-	for _, entry := range group.Entries {
-		if fuzzyMatch(entry, query, caseSensitive, exactMatch) {
-			results = append(results, entry)
-		}
-	}
-
-	// Recursively search subgroups
-	for _, subGroup := range group.Groups {
-		results = append(results, searchEntriesInGroup(&subGroup, query, caseSensitive, exactMatch)...)
-	}
-
-	return results
-}
-
-// fuzzyMatch performs fuzzy matching on entry fields
-func fuzzyMatch(entry gokeepasslib.Entry, query string, caseSensitive bool, exactMatch bool) bool {
-	// Get searchable fields
-	title := entry.GetTitle()
-	username := getEntryValue(entry, "UserName")
-	url := getEntryValue(entry, "URL")
-	notes := getEntryValue(entry, "Notes")
-	attributes := getAllEntryAttributes(entry)
-
-	// Custom fields
-	// dbPath := getEntryValue(entry, "Database Path")
-	// dbType := getEntryValue(entry, "Database Type")
-
-	// Convert to lowercase if not case sensitive
-	if !caseSensitive {
-		title = strings.ToLower(title)
-		username = strings.ToLower(username)
-		url = strings.ToLower(url)
-		notes = strings.ToLower(notes)
-		// dbPath = strings.ToLower(dbPath)
-		// dbType = strings.ToLower(dbType)
-	}
-
-	if exactMatch {
-		// Exact match only
-		return title == query ||
-			username == query ||
-			url == query ||
-			notes == query
-		// dbPath == query ||
-		// dbType == query
-	}
-
-	// Check for substring matches first
-	if strings.Contains(title, query) ||
-		strings.Contains(username, query) ||
-		strings.Contains(url, query) ||
-		strings.Contains(notes, query) ||
-		strings.Contains(attributes, query) {
-		// strings.Contains(dbPath, query) ||
-		// strings.Contains(dbType, query) {
-		return true
-	}
-
-	// Fuzzy matching: check if most characters from query appear in order
-	return fuzzyStringMatch(title, query) ||
-		fuzzyStringMatch(username, query) ||
-		fuzzyStringMatch(url, query) ||
-		fuzzyStringMatch(notes, query) ||
-		fuzzyStringMatch(attributes, query)
-	// fuzzyStringMatch(dbPath, query)
-}
-
-// getEntryValue safely gets a value from an entry
-func getEntryValue(entry gokeepasslib.Entry, key string) string {
-	for _, value := range entry.Values {
-		if value.Key == key {
-			return value.Value.Content
-		}
-	}
-	return ""
-}
-
-func getAllEntryAttributes(entry gokeepasslib.Entry) string {
-	var attributes []string
-	for _, value := range entry.Values {
-		if value.Key != "Title" && value.Key != "UserName" && value.Key != "URL" && value.Key != "Notes" && value.Key != "Password" {
-			attributes = append(attributes, value.Value.Content)
-		}
-	}
-	return strings.Join(attributes, " ")
-}
-
-// fuzzyStringMatch performs character-by-character fuzzy matching
-func fuzzyStringMatch(text, pattern string) bool {
-	if len(pattern) == 0 {
-		return true
-	}
-	if len(text) == 0 {
-		return false
-	}
-
-	// Simple fuzzy matching: check if pattern characters appear in order
-	textIdx := 0
-	patternIdx := 0
-
-	for textIdx < len(text) && patternIdx < len(pattern) {
-		if text[textIdx] == pattern[patternIdx] {
-			patternIdx++
-		}
-		textIdx++
-	}
-
-	// If we matched all pattern characters, it's a fuzzy match
-	return patternIdx == len(pattern)
 }
