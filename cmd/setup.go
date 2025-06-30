@@ -80,6 +80,13 @@ var setupInitCmd = &cobra.Command{
 			println("Saved gokeepass password to keystore")
 		}
 
+		fmt.Printf("\nCreating default config.json in %s\n", gokpFolder)
+		config := createDefaultConfig()
+		if config == nil {
+			configPath := filepath.Join(gokpFolder, "config.json")
+			log.Fatalf("ERROR: Failed to create default config at %s\n", configPath)
+		}
+
 		createDB(gokpKDBX, passwordStr)
 	},
 }
@@ -138,6 +145,23 @@ Make sure to backup any important data before proceeding.`,
 			fmt.Println("Password removed from keystore.")
 		}
 
+		// Handle config.json removal
+
+		configPath := filepath.Join(gokpFolder, "config.json")
+		if _, err := os.Stat(configPath); os.IsNotExist(err) {
+			fmt.Println("No config.json found to delete.")
+		} else {
+			fmt.Printf("\nWould you like to remove config.json from %s? (yes/no): ", configPath)
+			var response string
+			fmt.Scanln(&response)
+			_, err := os.ReadFile(gokpFolder)
+			if err != nil {
+				fmt.Printf("Warning: Failed to remove %s: %v\n", configPath, err)
+			} else {
+				fmt.Printf("Removed: %s\n", configPath)
+			}
+		}
+
 		// Handle folder removal
 		entries, err := os.ReadDir(gokpFolder)
 		if err == nil && len(entries) == 0 {
@@ -190,8 +214,8 @@ func mkProtectedValue(key string, value string) gokeepasslib.ValueData {
 }
 
 func createDB(dbPath string, password string) {
-	file, _ := os.Create(dbPath)
-	defer file.Close()
+	// file, _ := os.Create(dbPath)
+	// defer file.Close()
 
 	dbsGroup := gokeepasslib.NewGroup()
 	dbsGroup.Name = "databases"
@@ -210,16 +234,17 @@ func createDB(dbPath string, password string) {
 		},
 	}
 
-	dbs := FindRootGroupByName(db.Content.Root.Groups, dbsGroup.Name)
-	fmt.Print(dbs.Name)
-	fav := FindRootGroupByName(db.Content.Root.Groups, favGroup.Name)
-	fmt.Print(fav.Name)
-
-	keepassEncoder := gokeepasslib.NewEncoder(file)
-	if err := keepassEncoder.Encode(db); err != nil {
-		panic(err)
+	err := FindRootGroupByName(db.Content.Root.Groups, dbsGroup.Name)
+	if err == nil {
+		log.Fatalf("ERROR: Failed to find root group by name: %s", dbsGroup.Name)
 	}
-	println("\nDONE: gokp app database created.\nSetup keepass databases by using:\n- 'gokp open <NEW_NAME> -s'")
+	err = FindRootGroupByName(db.Content.Root.Groups, favGroup.Name)
+	if err == nil {
+		log.Fatalf("ERROR: Failed to find root group by name: %s", favGroup.Name)
+	}
+
+	saveKeepassDB(db, dbPath)
+	println("\nDONE: gokp app database created.\n\nFor information on setting up external keypass entrys: `gokp manage --help`")
 }
 
 func FindRootGroupByName(groups []gokeepasslib.Group, name string) *gokeepasslib.Group {

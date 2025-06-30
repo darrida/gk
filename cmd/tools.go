@@ -209,37 +209,6 @@ func getGoKPPassword() (string, error) {
 	return secret, nil
 }
 
-// func addEntryToGroupWithExtras(db *gokeepasslib.Database, groupName string, title string, username string, password string, url string, notes string) {
-// 	entry := gokeepasslib.NewEntry()
-
-// 	// Standard KeePass fields
-// 	entry.Values = append(entry.Values, mkValue("Title", title))
-// 	entry.Values = append(entry.Values, mkValue("UserName", username))
-// 	entry.Values = append(entry.Values, mkProtectedValue("Password", password))
-// 	entry.Values = append(entry.Values, mkValue("URL", url))
-// 	entry.Values = append(entry.Values, mkValue("Notes", notes))
-
-// 	// Additional custom attributes
-// 	// if email != "" {
-// 	// 	entry.Values = append(entry.Values, mkValue("Email", email))
-// 	// }
-// 	// if tags != "" {
-// 	// 	entry.Values = append(entry.Values, mkValue("Tags", tags))
-// 	// }
-
-// 	// // Protected custom fields (encrypted)
-// 	// entry.Values = append(entry.Values, mkProtectedValue("API Key", "secret-api-key"))
-// 	// entry.Values = append(entry.Values, mkProtectedValue("SSH Private Key", "-----BEGIN RSA PRIVATE KEY-----"))
-// 	// entry.Values = append(entry.Values, mkProtectedValue("Secret Token", "bearer-token-here"))
-
-// 	for i := range db.Content.Root.Groups {
-// 		if db.Content.Root.Groups[i].Name == groupName {
-// 			db.Content.Root.Groups[i].Entries = append(db.Content.Root.Groups[i].Entries, entry)
-// 			break
-// 		}
-// 	}
-// }
-
 // Helper function to get any attribute value from an entry
 func getEntryAttribute(entry *gokeepasslib.Entry, attributeName string) string {
 	if entry == nil {
@@ -253,45 +222,6 @@ func getEntryAttribute(entry *gokeepasslib.Entry, attributeName string) string {
 	}
 	return ""
 }
-
-// Helper function to set/update any attribute in an entry
-// func setEntryAttribute(entry *gokeepasslib.Entry, attributeName string, attributeValue string, protected bool) {
-// 	if entry == nil {
-// 		return
-// 	}
-
-// 	// Check if attribute already exists and update it
-// 	for i := range entry.Values {
-// 		if entry.Values[i].Key == attributeName {
-// 			if protected {
-// 				entry.Values[i] = mkProtectedValue(attributeName, attributeValue)
-// 			} else {
-// 				entry.Values[i] = mkValue(attributeName, attributeValue)
-// 			}
-// 			return
-// 		}
-// 	}
-
-// 	// If attribute doesn't exist, add it
-// 	if protected {
-// 		entry.Values = append(entry.Values, mkProtectedValue(attributeName, attributeValue))
-// 	} else {
-// 		entry.Values = append(entry.Values, mkValue(attributeName, attributeValue))
-// 	}
-// }
-
-// // Function to list all attributes of an entry
-// func listEntryAttributes(entry *gokeepasslib.Entry) map[string]string {
-// 	attributes := make(map[string]string)
-// 	if entry == nil {
-// 		return attributes
-// 	}
-
-// 	for _, value := range entry.Values {
-// 		attributes[value.Key] = value.Value.Content
-// 	}
-// 	return attributes
-// }
 
 // Helper function to get formatted timestamps for different use cases
 func getCurrentTimestamp(format string) string {
@@ -309,87 +239,3 @@ func getCurrentTimestamp(format string) string {
 		return now.Format("2006-01-02 15:04:05")
 	}
 }
-
-// func searchEntries(db *gokeepasslib.Database, query string) []*gokeepasslib.Entry {
-// 	var results []*gokeepasslib.Entry
-
-// 	for _, group := range db.Content.Root.Groups {
-// 		for _, entry := range group.Entries {
-// 			if entry.GetTitle() == query || entry.GetContent("UserName") == query || entry.GetContent("URL") == query {
-// 				results = append(results, &entry)
-// 			}
-// 		}
-// 	}
-
-// 	return results
-// }
-
-// func showCountdownBar(seconds int, originalClipboard, password string) {
-// 	fmt.Printf("\nClipboard will clear in %d seconds:\n", seconds)
-
-// 	go func() {
-// 		barWidth := 50
-// 		for i := seconds; i > 0; i-- {
-// 			// Calculate progress
-// 			progress := float64(seconds-i) / float64(seconds)
-// 			filled := int(progress * float64(barWidth))
-
-// 			// Create progress bar
-// 			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-
-// 			// Print progress bar with timer
-// 			fmt.Printf("\r[%s] %2ds remaining", bar, i)
-
-// 			time.Sleep(1 * time.Second)
-// 		}
-
-// 		// Clear the line and show completion
-// 		fmt.Printf("\r%s\r", strings.Repeat(" ", barWidth+20))
-
-// 		// Check if our password is still in clipboard before clearing
-// 		currentClipboard, err := clipboard.ReadAll()
-// 		if err == nil && currentClipboard == password {
-// 			// Restore original clipboard content or clear it
-// 			if originalClipboard != "" {
-// 				clipboard.WriteAll(originalClipboard)
-// 				fmt.Printf("✓ Clipboard restored to previous content\n")
-// 			} else {
-// 				clipboard.WriteAll("")
-// 				fmt.Printf("✓ Clipboard cleared\n")
-// 			}
-// 		} else {
-// 			fmt.Printf("✓ Clipboard was changed by user - not clearing\n")
-// 		}
-// 	}()
-// }
-
-// // Alternative animated countdown with spinner
-// func showAnimatedCountdown(seconds int, originalClipboard, password string) {
-// 	chars := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-// 	go func() {
-// 		for i := seconds; i > 0; i-- {
-// 			for j := 0; j < 10; j++ {
-// 				fmt.Printf("\r%s Clipboard will clear in %2ds", chars[j%len(chars)], i)
-// 				time.Sleep(100 * time.Millisecond)
-// 			}
-// 		}
-
-// 		// Clear and show completion
-// 		fmt.Printf("\r%s\r", strings.Repeat(" ", 30))
-
-// 		// Handle clipboard clearing
-// 		currentClipboard, err := clipboard.ReadAll()
-// 		if err == nil && currentClipboard == password {
-// 			if originalClipboard != "" {
-// 				clipboard.WriteAll(originalClipboard)
-// 				fmt.Printf("✓ Clipboard restored\n")
-// 			} else {
-// 				clipboard.WriteAll("")
-// 				fmt.Printf("✓ Clipboard cleared\n")
-// 			}
-// 		} else {
-// 			fmt.Printf("✓ Clipboard unchanged (modified by user)\n")
-// 		}
-// 	}()
-// }

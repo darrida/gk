@@ -17,15 +17,14 @@ import (
 
 func init() {
 	rootCmd.AddCommand(favoritesCmd)
+	// main favorites command
 	favoritesCmd.AddCommand(favoritesList)
-	// favoritesCmd.AddCommand(favoritesSelect)
-
+	favoritesCmd.Flags().BoolP("password", "p", false, "Print password to stdout")
+	favoritesCmd.Flags().BoolP("copy", "c", false, "Copy password to clipboard")
+	favoritesCmd.Flags().BoolP("test", "t", false, "Run CLI command in test mode (no user prompts)")
 	// Add alias for favorites command
 	rootCmd.AddCommand(favCmd)
 	favCmd.AddCommand(favoritesList)
-	// favCmd.AddCommand(favoritesSelect)
-
-	// Add main flags
 	favCmd.Flags().BoolP("password", "p", false, "Print password to stdout")
 	favCmd.Flags().BoolP("copy", "c", false, "Copy password to clipboard")
 	favCmd.Flags().BoolP("test", "t", false, "Run CLI command in test mode (no user prompts)")
@@ -120,7 +119,7 @@ func showFavoriteEntry(index int, showPassword, copyToClipboard bool, test bool)
 		return
 	}
 
-	fmt.Printf("\n------ Entry -------\n")
+	fmt.Printf("\n%s------ Entry -------%s\n", ColorBoldCyan, ColorReset)
 	fmt.Printf("Favorite: %d\n", index)
 	fmt.Printf("Title:    %s\n", entry.GetTitle())
 	if entry.GetContent("UserName") != "" {
@@ -131,13 +130,13 @@ func showFavoriteEntry(index int, showPassword, copyToClipboard bool, test bool)
 	}
 	if showPassword {
 		fmt.Printf("")
-		fmt.Printf("----- Password -----\n")
+		fmt.Printf("%s----- Password -----%s\n", ColorBoldCyan, ColorReset)
 
 		if showPassword {
 			fmt.Println(entry.GetPassword())
 		}
 	}
-	fmt.Printf("--------------------\n")
+	fmt.Printf("%s--------------------%s\n", ColorBoldCyan, ColorReset)
 
 	if !showPassword && !copyToClipboard {
 		fmt.Printf("Favorite #%d found. Use -p to show password or -c to copy to clipboard\n", index)
@@ -154,8 +153,9 @@ func showFavoriteEntry(index int, showPassword, copyToClipboard bool, test bool)
 			return
 		}
 
+		config := readConfig()
 		fmt.Printf("\nPassword for favorite #%d copied to clipboard\n", index)
-		showCountdownBarWithSignalHandling(60, originalClipboard, entry.GetPassword())
+		showCountdownBarWithSignalHandling(config.ClipboardTimeout, originalClipboard, entry.GetPassword())
 	}
 }
 
@@ -172,7 +172,7 @@ func showCountdownBarWithSignalHandling(seconds int, originalClipboard, password
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	fmt.Printf("\nClipboard will clear in %d seconds (Press Ctrl+C to exit early and clear now):\n", seconds)
+	fmt.Printf("\nClipboard will clear in %d seconds (Press %sCtrl+C%s to exit early and clear now):\n", seconds, ColorBoldRed, ColorReset)
 
 	// Start countdown goroutine
 	go func() {
@@ -195,7 +195,7 @@ func showCountdownBarWithSignalHandling(seconds int, originalClipboard, password
 				bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 
 				// Print progress bar with timer
-				fmt.Printf("\r[%s] %2ds remaining", bar, i)
+				fmt.Printf("\r[%s] %2ds", bar, i)
 			}
 		}
 	}()
@@ -203,7 +203,7 @@ func showCountdownBarWithSignalHandling(seconds int, originalClipboard, password
 	// Wait for either completion or signal
 	select {
 	case <-sigChan:
-		fmt.Printf("\n\n🛑 Interrupted! Clearing clipboard now...\n")
+		fmt.Printf("\n\n🛑 Interrupted! Clearing clipboard now...\n\n")
 		cancel() // Cancel the countdown
 		clearClipboardSafely(originalClipboard, password)
 		os.Exit(0)
@@ -220,13 +220,13 @@ func clearClipboardSafely(originalClipboard, password string) {
 	if err == nil && currentClipboard == password {
 		if originalClipboard != "" {
 			clipboard.WriteAll(originalClipboard)
-			fmt.Printf("✓ Clipboard restored to previous content\n")
+			fmt.Printf("✅ Clipboard restored to previous content\n")
 		} else {
 			clipboard.WriteAll("")
-			fmt.Printf("✓ Clipboard cleared\n")
+			fmt.Printf("✅ Clipboard cleared\n")
 		}
 	} else {
-		fmt.Printf("✓ Clipboard was changed by user - not modifying\n")
+		fmt.Printf("✅ Clipboard was changed by user - not modifying\n")
 	}
 }
 
