@@ -23,8 +23,8 @@ func init() {
 
 var searchCmd = &cobra.Command{
 	Use:   "search [QUERY]",
-	Short: "Search for entries in the external Keepass databases",
-	Long: `Search for entries in the external Keepass databases referenced in the GoKP database.
+	Short: "Search for and pin entries in the external Keepass databases",
+	Long: `Search for and pin entries in the external Keepass databases referenced in the GoKP database.
 
 The search will load all external databases referenced in the GoKP "databases" group
 and search their entries for matching titles, usernames, URLs, notes, and custom fields.

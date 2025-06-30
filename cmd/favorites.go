@@ -13,6 +13,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	"github.com/spf13/cobra"
+	"github.com/tobischo/gokeepasslib/v3"
 )
 
 func init() {
@@ -29,55 +30,56 @@ func init() {
 	favCmd.Flags().BoolP("copy", "c", false, "Copy password to clipboard")
 	favCmd.Flags().BoolP("test", "t", false, "Run CLI command in test mode (no user prompts)")
 	// Add search flags
-	favoritesList.Flags().StringP("favorite", "f", "", "Select favorite using index")
-	favoritesList.Flags().StringP("search", "s", "", "Search favorites by title, username, URL")
-	favoritesList.Flags().BoolP("exact", "e", false, "Exact match only (no fuzzy search)")
-	favoritesList.Flags().StringP("database", "d", "", "Search for favorites only from a specific external database")
+	// favoritesList.Flags().StringP("favorite", "f", "", "Select favorite using index")
+	// favoritesList.Flags().StringP("search", "s", "", "Search favorites by title, username, URL")
+	// favoritesList.Flags().BoolP("exact", "e", false, "Exact match only (no fuzzy search)")
+	favoritesList.Flags().BoolP("detail", "d", false, "Show details of entries")
+	favoritesList.Flags().BoolP("test", "t", false, "Run CLI command in test mode (no user prompts)")
 }
 
 var favCmd = &cobra.Command{
 	Use:   "fav [INDEX]",
 	Short: "Alias of `favorites`",
-	Args:  cobra.MaximumNArgs(1),
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		showPassword, _ := cmd.Flags().GetBool("password")
 		copyToClipboard, _ := cmd.Flags().GetBool("copy")
 		test, _ := cmd.Flags().GetBool("test")
 
-		if len(args) > 0 {
-			index, err := strconv.Atoi(args[0])
-			if err != nil {
-				fmt.Printf("Invalid index: %s\n", args[0])
-				return
-			}
-			showFavoriteEntry(index, showPassword, copyToClipboard, test)
-		} else {
-			fmt.Println("No index provided, listing all favorites")
-			// Call the list function here
+		if len(args) == 0 {
+			fmt.Println("Index argument required. Use `gokp favorites list` to see all favorites.")
+			os.Exit(0)
 		}
+
+		index, err := strconv.Atoi(args[0])
+		if err != nil {
+			fmt.Printf("Invalid index: %s\n", args[0])
+			return
+		}
+		showFavoriteEntry(index, showPassword, copyToClipboard, test)
 	},
 }
 
 var favoritesCmd = &cobra.Command{
 	Use:   "favorites [INDEX]",
-	Short: "Manage favorites from external Keepass databases",
-	Args:  cobra.MaximumNArgs(1),
+	Short: "Use and manage favorites entries",
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		showPassword, _ := cmd.Flags().GetBool("password")
 		copyToClipboard, _ := cmd.Flags().GetBool("copy")
 		test, _ := cmd.Flags().GetBool("test")
 
-		if len(args) > 0 {
-			index, err := strconv.Atoi(args[0])
-			if err != nil {
-				fmt.Printf("Invalid index: %s\n", args[0])
-				return
-			}
-			showFavoriteEntry(index, showPassword, copyToClipboard, test)
-		} else {
-			fmt.Println("No index provided, listing all favorites")
-			// Call the list function here
+		if len(args) == 0 {
+			fmt.Println("Index argument required. Use `gokp favorites list` to see all favorites.")
+			os.Exit(0)
 		}
+
+		index, err := strconv.Atoi(args[0])
+		if err != nil {
+			fmt.Printf("Invalid index: %s\n", args[0])
+			return
+		}
+		showFavoriteEntry(index, showPassword, copyToClipboard, test)
 	},
 }
 
@@ -86,7 +88,32 @@ var favoritesList = &cobra.Command{
 	Short: "List favorites from external Keepass databases",
 	// Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("This will list favorites")
+		test, _ := cmd.Flags().GetBool("test")
+
+		_, _, gokpKDBX := pathSelection(test)
+
+		secret, err := getGoKPPassword()
+		if err != nil {
+			log.Fatalf("Failed to get GoKP password: %v", err)
+		}
+
+		db, err := openKeepassDB(gokpKDBX, secret)
+		if err != nil {
+			log.Fatalf("Failed to open Keepass database: %v", err)
+		}
+
+		var favGroupIndex int
+		for i := range db.Content.Root.Groups {
+			if db.Content.Root.Groups[i].Name == "favorites" {
+				favGroupIndex = i
+				break
+			}
+		}
+
+		for _, entry := range db.Content.Root.Groups[favGroupIndex].Entries {
+			index := entry.GetContent("Favorite Index")
+			printFavoritesResult(index, entry, "favorites")
+		}
 	},
 }
 
@@ -226,27 +253,36 @@ func clearClipboardSafely(originalClipboard, password string) {
 			fmt.Printf("✅ Clipboard cleared\n")
 		}
 	} else {
-		fmt.Printf("✅ Clipboard was changed by user - not modifying\n")
+		fmt.Printf("Clipboard was changed by user - not modifying\n")
 	}
 }
 
-// // Alternative: Simple version that just waits and handles signals
-// func showCountdownWithExit(seconds int, originalClipboard, password string) {
-// 	// Set up signal handling
-// 	sigChan := make(chan os.Signal, 1)
-// 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+func printFavoritesResult(count string, entry gokeepasslib.Entry, databaseName string) {
+	title := entry.GetTitle()
+	username := getEntryValue(entry, "UserName")
+	url := getEntryValue(entry, "URL")
 
-// 	fmt.Printf("Password copied to clipboard. Will clear in %d seconds (Ctrl+C to exit and clear now)\n", seconds)
+	fmt.Printf("\n-------------------------------------------------------\n")
+	if count != "" {
+		fmt.Printf(
+			"[%s%s%s] | Title: %s%s%s | Username: %s%s%s\n",
+			ColorBoldGreen, count, ColorReset, ColorBoldCyan, title, ColorReset, ColorBoldCyan, username, ColorReset,
+		)
+		fmt.Printf("-------------------------------------------------------\n")
+	}
+	fmt.Printf("Database:  %s\n", databaseName)
+	if url != "" {
+		fmt.Printf("URL:       %s\n", url)
+	}
 
-// 	// Create timer
-// 	timer := time.NewTimer(time.Duration(seconds) * time.Second)
-
-// 	select {
-// 	case <-sigChan:
-// 		fmt.Println("\nInterrupted! Clearing clipboard...")
-// 		clearClipboardSafely(originalClipboard, password)
-// 		os.Exit(0)
-// 	case <-timer.C:
-// 		clearClipboardSafely(originalClipboard, password)
-// 	}
-// }
+	var firstPass bool = true
+	for _, value := range entry.Values {
+		if value.Key == "Database Source" || value.Key == "Database path" {
+			if firstPass {
+				fmt.Println("Custom Attributes:")
+				firstPass = false
+			}
+			fmt.Printf("- %s: %s\n", value.Key, value.Value.Content)
+		}
+	}
+}

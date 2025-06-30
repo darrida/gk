@@ -25,7 +25,7 @@ func init() {
 
 var setupCmd = &cobra.Command{
 	Use:   "setup",
-	Short: "Manage gokp db and KeyPass db entries",
+	Short: "Manage gokp database",
 }
 
 var setupInitCmd = &cobra.Command{
