@@ -27,7 +27,7 @@ var logoutCmd = &cobra.Command{
 	Short: "Remove gokp password from OS keystore",
 	Run: func(cmd *cobra.Command, args []string) {
 		delete_password("gokp", "local")
-		println("gokp password cleared.")
+		println("gokp password cleared")
 	},
 }
 
