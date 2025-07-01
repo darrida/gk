@@ -1,2 +1,4 @@
 gk
 go-*
+# Added by goreleaser init:
+dist/

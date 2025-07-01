@@ -96,6 +96,7 @@ Examples:
 			}
 
 			externalDB, err := openExternalKeepassDB(dbPath, dbPassword, keyFilePath)
+
 			if err != nil {
 				fmt.Printf("Warning: Failed to open database '%s': %v, skipping.\n", dbName, err)
 				continue
@@ -121,8 +122,6 @@ Examples:
 					DatabasePath: dbPath,
 				})
 			}
-
-			closeKeepassDB(externalDB)
 		}
 
 		if totalDBsSearched == 0 {
